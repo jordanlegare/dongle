@@ -13,6 +13,7 @@ The goal is to prevent a managed Linux computer from continuing its boot sequenc
 
 - [Goals and design](#goals-and-design)
 - [Architecture](#architecture)
+- [UEFI pre-OS stage](#uefi-pre-os-stage)
 - [Authentication sequence](#authentication-sequence)
 - [Trust boundaries and security properties](#trust-boundaries-and-security-properties)
 - [Repository layout](#repository-layout)
@@ -128,6 +129,112 @@ The normal boot chain remains responsible for verifying the signed bootloader, k
 | **Lattice reporter** | Authorization host | Optionally publishes a persistent endpoint asset entity and the latest authorization result |
 | **initramfs-tools hook** | Client build system | Includes the agent and its required files in the generated initramfs |
 | **initramfs local-bottom script** | Client initramfs | Runs the agent before the real-root transition and panics on denial or failure |
+
+## UEFI pre-OS stage
+
+The repository now includes a separate Rust UEFI application that runs **before the OS loader, kernel, and initramfs**. This is the path to use when the endpoint must establish network connectivity and complete central authorization without depending on Linux userspace or initramfs networking.
+
+UEFI firmware is still the platform that starts the application and supplies device protocols. The application is an ordinary signed PE/COFF UEFI executable (.efi), not a freestanding program that runs before firmware.
+
+### Pre-OS boot flow
+
+    UEFI firmware / Secure Boot
+          |
+          v
+    Signed dongle_uefi_stage.efi
+          |
+          +---- EFI IPv4 Config 2: DHCP
+          |
+          +---- EFI HTTP + TLS firmware protocols
+          |
+          +---- EFI TCG2: confirm TPM 2.0 / SHA-256 PCR bank
+          |
+          v
+    HTTPS /v1/uefi/challenge
+          |
+          v
+    Vendor UEFI dongle-attestation protocol
+       |                       |
+       |                       +---- TPM nonce-bound quote + PCR data
+       +---- Hardware dongle P-256 signature
+          |
+          v
+    HTTPS /v1/uefi/authorize
+          |
+          v
+    dongle-authd verifies user + dongle + asset + TPM evidence
+          |
+          +---- Optional server-side Lattice status publication
+          |
+          v
+    Allow: UEFI LoadImage / StartImage of configured OS loader
+    Deny/error: remain halted in the pre-OS stage
+
+### What the UEFI application implements
+
+The new crate is independent of the root Linux crate and builds for the **x86_64-unknown-uefi** Rust target. It:
+
+- discovers firmware network interfaces and uses **EFI_IP4_CONFIG2_PROTOCOL** to bring an interface up with DHCP;
+- requires UEFI HTTP/TLS support and an HTTPS service URL;
+- probes **EFI_TCG2_PROTOCOL** and requires a TPM to be present with an active SHA-256 PCR bank;
+- requests the same single-use challenge from **dongle-authd** used by the Linux agent;
+- calls a platform-provided UEFI protocol to obtain the hardware dongle's signature and a nonce-bound TPM quote;
+- submits those proofs to the same authorization policy and verification logic; and
+- loads and starts the configured next-stage EFI loader only after an explicit **allowed = true** decision.
+
+The UEFI-only API routes accept raw JSON bodies because some firmware HTTP stacks do not attach the **Content-Type: application/json** header. They call the same challenge issuance and authorization handlers as the existing Linux client; they do not implement a separate or weaker authorization policy.
+
+### The hardware-token adapter is platform-specific
+
+UEFI does **not** standardize a general PKCS#11 smart-card interface. A USB token working through OpenSC after Linux starts does not imply that the same token can be used before the OS. The UEFI application therefore expects a signed platform/vendor driver to install **DongleAttestationProtocol** before the application runs.
+
+The protocol contract is in [uefi-stage/include/dongle_attestation_protocol.h](uefi-stage/include/dongle_attestation_protocol.h). Its **Attest** operation receives the raw server nonce and exact signing transcript, then returns:
+
+- the DER-encoded ECDSA P-256 dongle signature;
+- the TPM 2.0 quote message;
+- the TPM quote signature; and
+- the serialized PCR values.
+
+The driver must obtain the signature from the non-exportable key on the registered token, protect the PIN entry and any token session state, and generate a TPM quote whose qualifying data is the received challenge nonce. It must never export private key material or PINs. The server independently verifies all returned cryptographic evidence. The adapter must be signed by a key trusted under Secure Boot and must be audited as security-critical code.
+
+**This repository supplies the adapter ABI, not a driver for every token vendor.** Until a vendor/platform driver implementing this protocol is installed and tested on the target hardware, the UEFI stage will refuse to continue. The initramfs agent remains available for machines that cannot support this pre-OS adapter.
+
+### Firmware network and TLS prerequisites
+
+The initial implementation supports DHCPv4. It does not yet implement static IPv4 configuration, IPv6, Wi-Fi association, 802.1X, captive portals, or arbitrary network-driver loading. The network controller must already be exposed to UEFI networking protocols.
+
+Before enabling the gate, confirm that the target firmware provides:
+
+- **EFI_IP4_CONFIG2_PROTOCOL** and a reachable DHCP service;
+- the UEFI HTTP service binding on the selected network interface;
+- the UEFI TLS service-binding and TLS-configuration protocols; and
+- DNS resolution and a correct firmware clock for the authorization service certificate.
+
+The application checks that the TLS protocols exist and uses HTTPS, but it does not configure or independently inspect the firmware's TLS trust policy. The platform must be configured to validate the authorization server's certificate chain and server identity, with the correct CA roots provisioned in firmware. **Protocol presence alone is not proof of certificate validation.** Test the exact firmware build and TLS configuration; do not use this path on production machines if the HTTPS client can accept an untrusted or mismatched server certificate.
+
+### Build the UEFI application
+
+Use Rust 1.91 or later and the UEFI target. The build configuration contains only non-secret endpoint and identity values; those values are compiled into the EFI image.
+
+    cp config/uefi-stage.example.env config/uefi-stage.env
+    editor config/uefi-stage.env
+    sh scripts/build-uefi-stage.sh
+
+The build output is:
+
+    target/x86_64-unknown-uefi/release/dongle_uefi_stage.efi
+
+**DONGLE_UEFI_NEXT_BOOT_DEVICE_PATH** must be the **full UEFI device path** to the next-stage signed loader on the endpoint's EFI System Partition, not merely a Linux filesystem path. The value differs by machine, disk layout, and loader. Obtain it from the actual firmware Boot#### entry or device-path tooling. The value in the example configuration is deliberately a placeholder and must be replaced. The EFI application uses the firmware Device Path From Text protocol, then LoadImage and StartImage to chainload that entry. Secure Boot must trust both the UEFI gate and the next-stage loader.
+
+Sign the resulting .efi with the organization's Secure Boot signing key and enroll the signing certificate in the machine's allowed UEFI database or the applicable shim trust store. The platform/vendor token adapter must also be signed and loaded before the gate. Install the gate as the controlled first boot stage and prevent alternative boot entries or firmware setup paths from bypassing it. Verify the behavior on the target firmware: on a denial, the application deliberately remains halted instead of returning control to Boot Manager; after a physical reset, firmware policy must still prevent an alternate unauthenticated boot path.
+
+### Lattice placement
+
+The UEFI application does not carry Lattice credentials and does not call Lattice directly. It submits its authorization proof to **dongle-authd**; the existing server-side reporter publishes the resulting asset status to Lattice when configured. This keeps environment and Sandboxes tokens on the protected authorization host and avoids putting long-lived Lattice credentials in a boot image. Lattice remains reporting/asset visibility, not the cryptographic authority that grants boot access.
+
+### UEFI-stage FIPS boundary
+
+The UEFI stage does not currently link the root crate's AWS-LC-FIPS module. Its TLS implementation is supplied by firmware, and its token/TPM evidence is supplied by the platform adapter. Their cryptographic-module validation status, approved mode, firmware version, and operational configuration must be evaluated separately. The authorization service's AWS-LC FIPS-mode check does not make the firmware TLS implementation, the UEFI program, the hardware token, or the overall boot deployment FIPS 140-3 validated. See [FIPS 140-3 scope](#fips-140-3-scope-and-validation).
 
 ## Authentication sequence
 
