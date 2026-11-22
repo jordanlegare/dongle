@@ -5,20 +5,20 @@ extern crate alloc;
 
 use alloc::{format, string::String, vec::Vec};
 use core::time::Duration;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uefi::{
     boot::{self, LoadImageSource},
     prelude::*,
     proto::{
-        device_path::text::DevicePathFromText,
         BootPolicy,
+        device_path::text::DevicePathFromText,
         network::{
             http::{HttpHelper, HttpMethod},
             ip4config2::Ip4Config2,
             snp::SimpleNetwork,
         },
-        tcg::{v2::Tcg, HashAlgorithm},
+        tcg::{HashAlgorithm, v2::Tcg},
         unsafe_protocol,
     },
 };
@@ -141,8 +141,12 @@ fn decode_hex(input: &str) -> Result<Vec<u8>, Status> {
     let mut out = Vec::with_capacity(input.len() / 2);
     let bytes = input.as_bytes();
     for pair in bytes.chunks_exact(2) {
-        let hi = (pair[0] as char).to_digit(16).ok_or(Status::SECURITY_VIOLATION)?;
-        let lo = (pair[1] as char).to_digit(16).ok_or(Status::SECURITY_VIOLATION)?;
+        let hi = (pair[0] as char)
+            .to_digit(16)
+            .ok_or(Status::SECURITY_VIOLATION)?;
+        let lo = (pair[1] as char)
+            .to_digit(16)
+            .ok_or(Status::SECURITY_VIOLATION)?;
         out.push(((hi << 4) | lo) as u8);
     }
     Ok(out)
@@ -178,12 +182,10 @@ fn configure_dhcp() -> Result<Vec<Handle>, Status> {
 fn check_tpm2_sha256() -> Result<(), Status> {
     let handles = boot::find_handles::<Tcg>().map_err(|_| Status::NOT_FOUND)?;
     let handle = *handles.first().ok_or(Status::NOT_FOUND)?;
-    let mut tcg = boot::open_protocol_exclusive::<Tcg>(handle)
-        .map_err(|_| Status::UNSUPPORTED)?;
+    let mut tcg =
+        boot::open_protocol_exclusive::<Tcg>(handle).map_err(|_| Status::UNSUPPORTED)?;
     let capability = tcg.get_capability().map_err(|_| Status::DEVICE_ERROR)?;
-    if !capability.tpm_present()
-        || !capability.active_pcr_banks.contains(HashAlgorithm::SHA256)
-    {
+    if !capability.tpm_present() || !capability.active_pcr_banks.contains(HashAlgorithm::SHA256) {
         return Err(Status::UNSUPPORTED);
     }
     Ok(())
@@ -308,11 +310,9 @@ fn authorize() -> Result<(), Status> {
         user_id,
         dongle_id,
         asset_id,
-        dongle_signature_b64: STANDARD.encode(
-            &evidence.dongle_signature[..evidence.dongle_signature_len],
-        ),
-        quote_message_b64: STANDARD
-            .encode(&evidence.quote_message[..evidence.quote_message_len]),
+        dongle_signature_b64: STANDARD
+            .encode(&evidence.dongle_signature[..evidence.dongle_signature_len]),
+        quote_message_b64: STANDARD.encode(&evidence.quote_message[..evidence.quote_message_len]),
         quote_signature_b64: STANDARD
             .encode(&evidence.quote_signature[..evidence.quote_signature_len]),
         pcr_values_b64: STANDARD.encode(&evidence.pcr_values[..evidence.pcr_values_len]),
@@ -332,11 +332,11 @@ fn authorize() -> Result<(), Status> {
 
 fn chainload_next_stage() -> Result<(), Status> {
     let device_path_text = config_value(option_env!("DONGLE_UEFI_NEXT_BOOT_DEVICE_PATH"))?;
-    let device_path_text = uefi::CString16::try_from(device_path_text)
-        .map_err(|_| Status::INVALID_PARAMETER)?;
+    let device_path_text =
+        uefi::CString16::try_from(device_path_text).map_err(|_| Status::INVALID_PARAMETER)?;
 
-    let parser_handle = boot::get_handle_for_protocol::<DevicePathFromText>()
-        .map_err(|_| Status::UNSUPPORTED)?;
+    let parser_handle =
+        boot::get_handle_for_protocol::<DevicePathFromText>().map_err(|_| Status::UNSUPPORTED)?;
     let device_path = {
         let parser = boot::open_protocol_exclusive::<DevicePathFromText>(parser_handle)
             .map_err(|_| Status::UNSUPPORTED)?;
