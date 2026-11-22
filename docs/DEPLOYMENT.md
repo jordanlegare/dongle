@@ -77,7 +77,7 @@ Choose PCRs that match the platform boot chain and policy. The example uses SHA-
       -o /tmp/approved.pcrs -g sha256
     sha256sum /tmp/approved.pcrs
 
-Set approved_pcrs_sha256 to the 64-character digest printed by sha256sum. The same PCR selection must be set in both the server asset policy and the initramfs agent config. The service verifies the TPM signature, qualifying nonce, exact registered PCR selection, and PCR data using tpm2_checkquote, then compares the serialized PCR snapshot digest to the registered baseline.
+Set approved_pcrs_sha256 to the 64-character digest printed by sha256sum. The same PCR selection must be set in both the server asset policy and the initramfs agent config. The service verifies the TPM signature, qualifying nonce, and quoted PCR data using tpm2_checkquote. The SHA-256 baseline is calculated over the full serialized PCR output from tpm2_quote, which binds both the PCR selection structure and the selected PCR values; a changed selection or measurement therefore fails the baseline comparison.
 
 PCR baselines change when measured boot components change. After a kernel, bootloader, Secure Boot database, initramfs, or relevant firmware update, rebaseline only after the new boot chain is reviewed and approved. Never automatically trust the first new PCR value observed after a failed check.
 
