@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChallengeRequest {
     pub user_id: String,
@@ -9,7 +9,7 @@ pub struct ChallengeRequest {
     pub asset_id: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChallengeResponse {
     pub challenge_id: String,
@@ -18,7 +18,7 @@ pub struct ChallengeResponse {
     pub expires_in_seconds: u64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthorizeRequest {
     pub challenge_id: String,
@@ -32,7 +32,7 @@ pub struct AuthorizeRequest {
     pub pcr_values_b64: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthorizeResponse {
     pub allowed: bool,
