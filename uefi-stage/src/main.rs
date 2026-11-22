@@ -4,25 +4,21 @@
 extern crate alloc;
 
 use alloc::{format, string::String, vec::Vec};
-use core::time::Duration;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use core::time::Duration;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use uefi_raw::protocol::network::http::HttpMethod;
 use uefi::{
     boot::{self, LoadImageSource},
     prelude::*,
     proto::{
         BootPolicy,
         device_path::text::DevicePathFromText,
-        network::{
-            http::HttpHelper,
-            ip4config2::Ip4Config2,
-            snp::SimpleNetwork,
-        },
+        network::{http::HttpHelper, ip4config2::Ip4Config2, snp::SimpleNetwork},
         tcg::{HashAlgorithm, v2::Tcg},
         unsafe_protocol,
     },
 };
+use uefi_raw::protocol::network::http::HttpMethod;
 
 const MAX_SIGNATURE: usize = 512;
 const MAX_QUOTE: usize = 4096;
@@ -183,8 +179,7 @@ fn configure_dhcp() -> Result<Vec<Handle>, Status> {
 fn check_tpm2_sha256() -> Result<(), Status> {
     let handles = boot::find_handles::<Tcg>().map_err(|_| Status::NOT_FOUND)?;
     let handle = *handles.first().ok_or(Status::NOT_FOUND)?;
-    let mut tcg =
-        boot::open_protocol_exclusive::<Tcg>(handle).map_err(|_| Status::UNSUPPORTED)?;
+    let mut tcg = boot::open_protocol_exclusive::<Tcg>(handle).map_err(|_| Status::UNSUPPORTED)?;
     let capability = tcg.get_capability().map_err(|_| Status::DEVICE_ERROR)?;
     if !capability.tpm_present() || !capability.active_pcr_banks.contains(HashAlgorithm::SHA256) {
         return Err(Status::UNSUPPORTED);
