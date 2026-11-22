@@ -161,8 +161,11 @@ fn configure_dhcp() -> Result<Vec<Handle>, Status> {
     let mut configured = false;
     for nic in &nics {
         if let Ok(mut ip4) = Ip4Config2::new(*nic) {
-            ip4.ifup().map_err(|_| Status::TIMEOUT)?;
-            configured = true;
+            // One NIC may be unplugged or lack DHCP; try every firmware NIC.
+            // Authorization remains blocked unless at least one obtains IPv4.
+            if ip4.ifup().is_ok() {
+                configured = true;
+            }
         }
     }
     if !configured {
