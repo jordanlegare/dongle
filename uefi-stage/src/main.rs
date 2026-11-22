@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use alloc::{format, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 use core::time::Duration;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
