@@ -222,9 +222,8 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
         .init();
 
-    // Install AWS-LC as rustls' default provider before constructing HTTPS clients.
-    // Cargo's default feature set selects the pinned AWS-LC-FIPS 3.x module.
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    // Fail closed unless AWS-LC confirms FIPS mode and rustls installs its provider.
+    dongle::initialize_crypto()?;
 
     let config_path = env::args().nth(1).unwrap_or_else(|| "/etc/dongle/policy.toml".to_string());
     let policy = Arc::new(Policy::load(&config_path)?);
