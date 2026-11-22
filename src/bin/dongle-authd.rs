@@ -28,6 +28,16 @@ use std::{
 use tracing::{info, warn};
 use uuid::Uuid;
 
+fn random_uuid_v4() -> anyhow::Result<Uuid> {
+    let mut bytes = [0u8; 16];
+    SystemRandom::new()
+        .fill(&mut bytes)
+        .map_err(|_| anyhow::anyhow!("AWS-LC FIPS random generation failed"))?;
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Ok(Uuid::from_bytes(bytes))
+}
+
 #[derive(Clone)]
 struct AppState {
     policy: Arc<Policy>,
@@ -117,9 +127,25 @@ async fn issue_challenge(
     }))
 }
 
-async fn publish_lattice(state: &AppState, asset_id: &str, allowed: bool) {
+async fn publish_lattice(
+    state: &AppState,
+    asset_id: &str,
+    user_id: &str,
+    dongle_id: &str,
+    allowed: bool,
+) {
     if let Some(reporter) = &state.lattice {
-        if let Err(error) = reporter.publish_asset_status(asset_id, allowed).await {
+        let Some(asset) = state.policy.assets.get(asset_id) else {
+            return;
+        };
+        let Some(location) = asset.lattice_location.as_ref() else {
+            warn!(asset_id, "Lattice reporting skipped: configure assets.<id>.lattice_location");
+            return;
+        };
+        if let Err(error) = reporter
+            .publish_asset_status(asset_id, user_id, dongle_id, allowed, location)
+            .await
+        {
             warn!(asset_id, error = %error, "Lattice status publish failed; access decision is unchanged");
         }
     }
@@ -134,7 +160,9 @@ async fn authorize(
         challenges.remove(&request.challenge_id)
     };
 
-    let decision_id = Uuid::new_v4().to_string();
+    let decision_id = random_uuid_v4()
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "FIPS random generation failed"))?
+        .to_string();
     let Some(challenge) = pending else {
         return Ok(Json(AuthorizeResponse {
             allowed: false,
@@ -185,7 +213,13 @@ async fn authorize(
                 decision_id = %decision_id,
                 "boot authorization granted"
             );
-            publish_lattice(&state, &challenge.asset_id, true).await;
+            publish_lattice(
+                &state,
+                &challenge.asset_id,
+                &challenge.user_id,
+                &challenge.dongle_id,
+                true,
+            ).await;
             Ok(Json(AuthorizeResponse {
                 allowed: true,
                 decision_id,
@@ -201,7 +235,13 @@ async fn authorize(
                 reason = %error,
                 "boot authorization denied"
             );
-            publish_lattice(&state, &challenge.asset_id, false).await;
+            publish_lattice(
+                &state,
+                &challenge.asset_id,
+                &challenge.user_id,
+                &challenge.dongle_id,
+                false,
+            ).await;
             Ok(Json(AuthorizeResponse {
                 allowed: false,
                 decision_id,
