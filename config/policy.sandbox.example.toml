@@ -24,3 +24,12 @@ ak_public_key_pem_path = "/etc/dongle/ak-linux-workstation-01.pem"
 # tpm2_quote for the same PCR selection below.
 approved_pcrs_sha256 = "REPLACE_WITH_64_HEX_CHARACTER_SHA256"
 pcr_selection = "sha256:0,2,4,7,10,11"
+
+# Optional: specify the endpoint's real operator-approved position to publish it
+# as a location-aware Lattice TEMPLATE_ASSET. Omit this section to skip Lattice
+# publication for this asset; no coordinates are guessed.
+#
+# [assets.linux-workstation-01.lattice_location]
+# latitude_degrees = 00.000000
+# longitude_degrees = 00.000000
+# altitude_hae_meters = 0.0
