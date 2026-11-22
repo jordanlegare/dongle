@@ -15,7 +15,7 @@ A Linux early-boot access gate for registered hardware signing keys, TPM 2.0 mea
 
 ## FIPS 140-3
 
-The default FIPS build pins `aws-lc-rs` 1.17.1 with its `fips` feature, which selects AWS-LC-FIPS 3.x (CMVP certificates #5298 dynamic / #5314 static). Validation applies only when the validated module, approved mode, exact build, and operating environment match the applicable NIST security policy. Selecting approved algorithms or enabling a Cargo feature is not a substitute for a module validation or a deployment compliance assessment.
+The default build pins `aws-lc-rs` 1.18.1 with its `fips` feature, selecting AWS-LC-FIPS 4.x. NIST lists the AWS-LC 4 dynamic and static modules as active under CMVP certificates #5595 and #5596. The binaries check FIPS mode at startup. Validation still applies only when the validated module, approved mode, exact build, and operating environment match the applicable NIST security policy; this does not certify the dongle, TPM, host, kernel, or complete deployment.
 
 ## Components
 
