@@ -2,10 +2,11 @@ name: Rust CI
 
 on:
   push:
-    branches: ["feat/dongle-fips-boot-auth"]
+    branches: ["**"]
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   checks:
@@ -17,16 +18,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Format Rust sources and commit formatting
-        run: |
-          cargo fmt --all
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -- '*.rs'
-            git commit -m "style: apply rustfmt"
-            git push
-          fi
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Compile and run tests with default FIPS feature
