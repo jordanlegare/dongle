@@ -1,3 +1,4 @@
+use aws_lc_rs::rand::{SecureRandom, SystemRandom};
 use axum::{
     extract::{DefaultBodyLimit, State},
     http::StatusCode,
@@ -5,7 +6,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use aws_lc_rs::rand::{SecureRandom, SystemRandom};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use dongle::{
     config::{AssetPolicy, Policy},
@@ -61,14 +61,23 @@ fn api_error(status: StatusCode, message: &str) -> ApiError {
 }
 
 fn enrolled_binding(policy: &Policy, user_id: &str, dongle_id: &str, asset_id: &str) -> bool {
-    let Some(user) = policy.users.get(user_id) else { return false };
-    let Some(dongle) = policy.dongles.get(dongle_id) else { return false };
-    let Some(asset) = policy.assets.get(asset_id) else { return false };
+    let Some(user) = policy.users.get(user_id) else {
+        return false;
+    };
+    let Some(dongle) = policy.dongles.get(dongle_id) else {
+        return false;
+    };
+    let Some(asset) = policy.assets.get(asset_id) else {
+        return false;
+    };
     user.active
         && dongle.active
         && asset.active
         && dongle.user_id == user_id
-        && user.allowed_assets.iter().any(|allowed| allowed == asset_id)
+        && user
+            .allowed_assets
+            .iter()
+            .any(|allowed| allowed == asset_id)
 }
 
 async fn issue_challenge(
@@ -82,17 +91,31 @@ async fn issue_challenge(
         || request.dongle_id.len() > 256
         || request.asset_id.len() > 256
     {
-        return Err(api_error(StatusCode::BAD_REQUEST, "invalid identity binding"));
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "invalid identity binding",
+        ));
     }
 
-    if !enrolled_binding(&state.policy, &request.user_id, &request.dongle_id, &request.asset_id) {
-        return Err(api_error(StatusCode::FORBIDDEN, "user, dongle, or asset is not enrolled for this binding"));
+    if !enrolled_binding(
+        &state.policy,
+        &request.user_id,
+        &request.dongle_id,
+        &request.asset_id,
+    ) {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "user, dongle, or asset is not enrolled for this binding",
+        ));
     }
 
     let mut nonce = [0u8; 32];
-    SystemRandom::new()
-        .fill(&mut nonce)
-        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "secure random generation failed"))?;
+    SystemRandom::new().fill(&mut nonce).map_err(|_| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "secure random generation failed",
+        )
+    })?;
 
     let challenge_id = hex::encode(nonce);
     let nonce_hex = challenge_id.clone();
@@ -139,7 +162,10 @@ async fn publish_lattice(
             return;
         };
         let Some(location) = asset.lattice_location.as_ref() else {
-            warn!(asset_id, "Lattice reporting skipped: configure assets.<id>.lattice_location");
+            warn!(
+                asset_id,
+                "Lattice reporting skipped: configure assets.<id>.lattice_location"
+            );
             return;
         };
         if let Err(error) = reporter
@@ -161,7 +187,12 @@ async fn authorize(
     };
 
     let decision_id = random_uuid_v4()
-        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "FIPS random generation failed"))?
+        .map_err(|_| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "FIPS random generation failed",
+            )
+        })?
         .to_string();
     let Some(challenge) = pending else {
         return Ok(Json(AuthorizeResponse {
@@ -180,20 +211,33 @@ async fn authorize(
             "challenge identity binding mismatch"
         );
         anyhow::ensure!(
-            enrolled_binding(&state.policy, &challenge.user_id, &challenge.dongle_id, &challenge.asset_id),
+            enrolled_binding(
+                &state.policy,
+                &challenge.user_id,
+                &challenge.dongle_id,
+                &challenge.asset_id
+            ),
             "enrollment is inactive"
         );
 
-        let dongle = state.policy.dongles.get(&challenge.dongle_id)
+        let dongle = state
+            .policy
+            .dongles
+            .get(&challenge.dongle_id)
             .ok_or_else(|| anyhow::anyhow!("dongle is not registered"))?;
-        let public_key = STANDARD.decode(&dongle.public_key_sec1_b64)
+        let public_key = STANDARD
+            .decode(&dongle.public_key_sec1_b64)
             .map_err(|_| anyhow::anyhow!("registered dongle public key is not valid base64"))?;
-        let signature = STANDARD.decode(&request.dongle_signature_b64)
+        let signature = STANDARD
+            .decode(&request.dongle_signature_b64)
             .map_err(|_| anyhow::anyhow!("dongle signature is not valid base64"))?;
 
         verify_dongle_signature(&public_key, &challenge.transcript, &signature)?;
 
-        let asset: &AssetPolicy = state.policy.assets.get(&challenge.asset_id)
+        let asset: &AssetPolicy = state
+            .policy
+            .assets
+            .get(&challenge.asset_id)
             .ok_or_else(|| anyhow::anyhow!("asset is not registered"))?;
         verify_tpm_quote(
             asset,
@@ -219,7 +263,8 @@ async fn authorize(
                 &challenge.user_id,
                 &challenge.dongle_id,
                 true,
-            ).await;
+            )
+            .await;
             Ok(Json(AuthorizeResponse {
                 allowed: true,
                 decision_id,
@@ -241,7 +286,8 @@ async fn authorize(
                 &challenge.user_id,
                 &challenge.dongle_id,
                 false,
-            ).await;
+            )
+            .await;
             Ok(Json(AuthorizeResponse {
                 allowed: false,
                 decision_id,
@@ -258,21 +304,28 @@ async fn healthz() -> impl IntoResponse {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
         .init();
 
     // Fail closed unless AWS-LC confirms FIPS mode and rustls installs its provider.
     dongle::initialize_crypto()?;
 
-    let config_path = env::args().nth(1).unwrap_or_else(|| "/etc/dongle/policy.toml".to_string());
+    let config_path = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "/etc/dongle/policy.toml".to_string());
     let policy = Arc::new(Policy::load(&config_path)?);
     let lattice = LatticeReporter::from_env()?;
     if lattice.is_none() {
         info!("Lattice reporting disabled (no Lattice environment variables configured)");
     }
 
-    let bind: SocketAddr = policy.server.listen.parse()
+    let bind: SocketAddr = policy
+        .server
+        .listen
+        .parse()
         .map_err(|e| anyhow::anyhow!("invalid server.listen address: {e}"))?;
     let state = AppState {
         policy,

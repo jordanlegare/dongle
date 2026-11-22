@@ -40,15 +40,23 @@ impl LatticeReporter {
         }
 
         let endpoint = endpoint.context("LATTICE_ENDPOINT is required when Lattice is enabled")?;
-        let environment_token = environment_token.context("ENVIRONMENT_TOKEN is required when Lattice is enabled")?;
-        let sandboxes_token = sandboxes_token.context("SANDBOXES_TOKEN is required for Lattice Sandboxes")?;
+        let environment_token =
+            environment_token.context("ENVIRONMENT_TOKEN is required when Lattice is enabled")?;
+        let sandboxes_token =
+            sandboxes_token.context("SANDBOXES_TOKEN is required for Lattice Sandboxes")?;
 
         anyhow::ensure!(
             !endpoint.contains("://") && !endpoint.contains('/') && !endpoint.trim().is_empty(),
             "LATTICE_ENDPOINT must be the hostname only, without scheme or path"
         );
-        anyhow::ensure!(!environment_token.trim().is_empty(), "ENVIRONMENT_TOKEN cannot be empty");
-        anyhow::ensure!(!sandboxes_token.trim().is_empty(), "SANDBOXES_TOKEN cannot be empty");
+        anyhow::ensure!(
+            !environment_token.trim().is_empty(),
+            "ENVIRONMENT_TOKEN cannot be empty"
+        );
+        anyhow::ensure!(
+            !sandboxes_token.trim().is_empty(),
+            "SANDBOXES_TOKEN cannot be empty"
+        );
 
         let client = Client::builder()
             .https_only(true)
@@ -76,7 +84,11 @@ impl LatticeReporter {
     ) -> Result<()> {
         let entity_id = stable_asset_entity_id(asset_id);
         let now = Utc::now();
-        let activity = if allowed { "BOOT_AUTHORIZATION_GRANTED" } else { "BOOT_AUTHORIZATION_DENIED" };
+        let activity = if allowed {
+            "BOOT_AUTHORIZATION_GRANTED"
+        } else {
+            "BOOT_AUTHORIZATION_DENIED"
+        };
         let role = format!("Authorized user {user_id} via registered dongle {dongle_id}");
         let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
 
@@ -112,7 +124,8 @@ impl LatticeReporter {
             }
         });
 
-        let response = self.client
+        let response = self
+            .client
             .put(&self.publish_url)
             .bearer_auth(&self.environment_token)
             .header(
@@ -127,7 +140,10 @@ impl LatticeReporter {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Lattice rejected endpoint update ({status}): {}", body.chars().take(512).collect::<String>());
+            anyhow::bail!(
+                "Lattice rejected endpoint update ({status}): {}",
+                body.chars().take(512).collect::<String>()
+            );
         }
         Ok(())
     }

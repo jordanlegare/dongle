@@ -3,19 +3,19 @@ use aws_lc_rs::digest::{digest, SHA256};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use dongle::{
     config::AgentConfig,
-    protocol::{decode_b64, AuthorizeRequest, AuthorizeResponse, ChallengeRequest, ChallengeResponse},
+    protocol::{
+        decode_b64, AuthorizeRequest, AuthorizeResponse, ChallengeRequest, ChallengeResponse,
+    },
 };
 use reqwest::Client;
-use std::{
-    env,
-    fs,
-    process::Command,
-    time::Duration,
-};
+use std::{env, fs, process::Command, time::Duration};
 use tempfile::tempdir;
 
 fn ecdsa_raw_p256_to_der(raw: &[u8]) -> Result<Vec<u8>> {
-    anyhow::ensure!(raw.len() == 64, "PKCS#11 ECDSA output must be 64-byte P-256 r||s");
+    anyhow::ensure!(
+        raw.len() == 64,
+        "PKCS#11 ECDSA output must be 64-byte P-256 r||s"
+    );
 
     fn append_integer(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
         let first = src.iter().position(|b| *b != 0).unwrap_or(src.len() - 1);
@@ -55,19 +55,29 @@ fn sign_with_pkcs11(config: &AgentConfig, payload: &[u8]) -> Result<Vec<u8>> {
     // Do not pass the PIN as a command-line argument or environment variable.
     // pkcs11-tool prompts on the initramfs console after --login.
     let status = Command::new(&config.pkcs11_tool_path)
-        .arg("--module").arg(&config.pkcs11_module_path)
-        .arg("--token-label").arg(&config.pkcs11_token_label)
+        .arg("--module")
+        .arg(&config.pkcs11_module_path)
+        .arg("--token-label")
+        .arg(&config.pkcs11_token_label)
         .arg("--login")
-        .arg("--type").arg("privkey")
-        .arg("--id").arg(&config.pkcs11_key_id)
-        .arg("--mechanism").arg("ECDSA")
+        .arg("--type")
+        .arg("privkey")
+        .arg("--id")
+        .arg(&config.pkcs11_key_id)
+        .arg("--mechanism")
+        .arg("ECDSA")
         .arg("--sign")
-        .arg("--input-file").arg(&input_path)
-        .arg("--output-file").arg(&output_path)
+        .arg("--input-file")
+        .arg(&input_path)
+        .arg("--output-file")
+        .arg(&output_path)
         .status()
         .with_context(|| format!("starting PKCS#11 tool {}", config.pkcs11_tool_path))?;
 
-    anyhow::ensure!(status.success(), "hardware token refused or failed the signing operation");
+    anyhow::ensure!(
+        status.success(),
+        "hardware token refused or failed the signing operation"
+    );
     let raw_signature = fs::read(&output_path).context("reading PKCS#11 signature")?;
     ecdsa_raw_p256_to_der(&raw_signature)
 }
@@ -79,13 +89,20 @@ fn create_tpm_quote(config: &AgentConfig, nonce_hex: &str) -> Result<(Vec<u8>, V
     let pcr_path = dir.path().join("quote.pcrs");
 
     let status = Command::new(&config.tpm2_quote_path)
-        .arg("--key-context").arg(&config.tpm_ak_context_path)
-        .arg("--pcr-list").arg(&config.pcr_selection)
-        .arg("--qualification").arg(nonce_hex)
-        .arg("--message").arg(&message_path)
-        .arg("--signature").arg(&signature_path)
-        .arg("--pcr").arg(&pcr_path)
-        .arg("--hash-algorithm").arg("sha256")
+        .arg("--key-context")
+        .arg(&config.tpm_ak_context_path)
+        .arg("--pcr-list")
+        .arg(&config.pcr_selection)
+        .arg("--qualification")
+        .arg(nonce_hex)
+        .arg("--message")
+        .arg(&message_path)
+        .arg("--signature")
+        .arg(&signature_path)
+        .arg("--pcr")
+        .arg(&pcr_path)
+        .arg("--hash-algorithm")
+        .arg("sha256")
         .status()
         .with_context(|| format!("starting TPM quote tool {}", config.tpm2_quote_path))?;
 
@@ -149,8 +166,15 @@ async fn run(config: AgentConfig) -> Result<()> {
         .await
         .context("decoding authorization decision")?;
 
-    anyhow::ensure!(response.allowed, "boot authorization denied: {}", response.reason);
-    println!("dongle authorization granted for asset {}", request.asset_id);
+    anyhow::ensure!(
+        response.allowed,
+        "boot authorization denied: {}",
+        response.reason
+    );
+    println!(
+        "dongle authorization granted for asset {}",
+        request.asset_id
+    );
     Ok(())
 }
 
@@ -161,7 +185,9 @@ async fn main() {
         std::process::exit(1);
     }
 
-    let config_path = env::args().nth(1).unwrap_or_else(|| "/etc/dongle/agent.toml".to_string());
+    let config_path = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "/etc/dongle/agent.toml".to_string());
     let result = AgentConfig::load(&config_path).and_then(|config| {
         if !config.service_url.starts_with("https://") {
             anyhow::bail!("service_url must use HTTPS");

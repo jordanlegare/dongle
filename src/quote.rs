@@ -52,12 +52,18 @@ pub fn verify_tpm_quote(
 
     // Check both quote authenticity/nonce and exact approved PCR selection.
     let output = Command::new(checkquote_path)
-        .arg("--public").arg(&public_path)
-        .arg("--message").arg(&message_path)
-        .arg("--signature").arg(&signature_path)
-        .arg("--pcr").arg(&pcr_path)
-        .arg("--hash-algorithm").arg("sha256")
-        .arg("--qualification").arg(expected_nonce_hex)
+        .arg("--public")
+        .arg(&public_path)
+        .arg("--message")
+        .arg(&message_path)
+        .arg("--signature")
+        .arg(&signature_path)
+        .arg("--pcr")
+        .arg(&pcr_path)
+        .arg("--hash-algorithm")
+        .arg("sha256")
+        .arg("--qualification")
+        .arg(expected_nonce_hex)
         .output()
         .map_err(|e| anyhow::anyhow!("failed to execute tpm2_checkquote: {e}"))?;
 
