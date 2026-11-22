@@ -1,4 +1,6 @@
+use crate::config::LatticeLocation;
 use anyhow::{Context, Result};
+use aws_lc_rs::digest::{digest, SHA256};
 use chrono::{SecondsFormat, Utc};
 use reqwest::Client;
 use serde_json::json;
@@ -11,6 +13,18 @@ pub struct LatticeReporter {
     publish_url: String,
     environment_token: String,
     sandboxes_token: String,
+}
+
+fn stable_asset_entity_id(asset_id: &str) -> Uuid {
+    // Use a stable UUIDv8 derived with the configured FIPS SHA-256 implementation,
+    // rather than the SHA-1-based UUIDv5 helper.
+    let name = format!("dongle-endpoint:{asset_id}");
+    let hash = digest(&SHA256, name.as_bytes());
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&hash.as_ref()[..16]);
+    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Uuid::from_bytes(bytes)
 }
 
 /// Lattice is an optional reporting plane. Missing credentials disable reporting;
@@ -50,20 +64,39 @@ impl LatticeReporter {
         }))
     }
 
-    /// Publish an asset entity update using Lattice's documented REST endpoint.
+    /// Publish a persistent, location-aware Lattice asset entity.
     /// This is best-effort telemetry and never changes the local authorization decision.
-    pub async fn publish_asset_status(&self, asset_id: &str, allowed: bool) -> Result<()> {
-        let entity_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, format!("dongle-endpoint:{asset_id}").as_bytes());
+    pub async fn publish_asset_status(
+        &self,
+        asset_id: &str,
+        user_id: &str,
+        dongle_id: &str,
+        allowed: bool,
+        location: &LatticeLocation,
+    ) -> Result<()> {
+        let entity_id = stable_asset_entity_id(asset_id);
         let now = Utc::now();
         let activity = if allowed { "BOOT_AUTHORIZATION_GRANTED" } else { "BOOT_AUTHORIZATION_DENIED" };
-        let role = "Linux endpoint boot access control";
+        let role = format!("Authorized user {user_id} via registered dongle {dongle_id}");
         let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
 
         let entity = json!({
             "entityId": entity_id.to_string(),
             "description": format!("Dongle-managed Linux endpoint {asset_id}"),
             "isLive": true,
+            "noExpiry": true,
             "aliases": { "name": asset_id },
+            "location": {
+                "position": {
+                    "latitudeDegrees": location.latitude_degrees,
+                    "longitudeDegrees": location.longitude_degrees,
+                    "altitudeHaeMeters": location.altitude_hae_meters
+                }
+            },
+            "milView": {
+                "disposition": "DISPOSITION_FRIENDLY",
+                "environment": "ENVIRONMENT_LAND"
+            },
             "ontology": {
                 "template": "TEMPLATE_ASSET",
                 "platformType": "LINUX_ENDPOINT"
