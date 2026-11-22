@@ -1,0 +1,35 @@
+# Copy to /etc/dongle/policy.toml and replace every example value.
+# Missing or inactive users, dongles, and assets are denied.
+
+[server]
+listen = "127.0.0.1:8765"
+challenge_ttl_seconds = 90
+tpm2_checkquote = "/usr/bin/tpm2_checkquote"
+
+[users.operator]
+active = false
+allowed_assets = ["linux-workstation-01"]
+
+[dongles.operator-key-01]
+active = false
+user_id = "operator"
+# Base64 of the 65-byte uncompressed SEC1 P-256 public point (0x04 || X || Y).
+# This is public key material only; never put a private key or token PIN here.
+public_key_sec1_b64 = "REPLACE_WITH_BASE64_SEC1_P256_PUBLIC_KEY"
+
+[assets.linux-workstation-01]
+active = false
+ak_public_key_pem_path = "/etc/dongle/ak-linux-workstation-01.pem"
+# Must match the SHA256 digest of the serialized PCR output file created by
+# tpm2_quote for the same PCR selection below.
+approved_pcrs_sha256 = "REPLACE_WITH_64_HEX_CHARACTER_SHA256"
+pcr_selection = "sha256:0,2,4,7,10,11"
+
+# Optional: specify the endpoint's real operator-approved position to publish it
+# as a location-aware Lattice TEMPLATE_ASSET. Omit this section to skip Lattice
+# publication for this asset; no coordinates are guessed.
+#
+# [assets.linux-workstation-01.lattice_location]
+# latitude_degrees = 00.000000
+# longitude_degrees = 00.000000
+# altitude_hae_meters = 0.0

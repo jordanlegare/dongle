@@ -1,0 +1,36 @@
+[package]
+name = "dongle"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Early-boot hardware-key and TPM attestation gate with Lattice asset reporting"
+
+[features]
+default = ["fips"]
+fips = ["aws-lc-rs/fips", "rustls/fips"]
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.8", features = ["json", "tokio", "http1"] }
+aws-lc-rs = { version = "=1.18.1" }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = "1"
+
+[[bin]]
+name = "dongle-authd"
+path = "src/bin/dongle-authd.rs"
+
+[[bin]]
+name = "dongle-agent"
+path = "src/bin/dongle-agent.rs"

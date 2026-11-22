@@ -1,0 +1,17 @@
+/target/
+.env
+.env.*
+!.env.example
+*.ctx
+*.priv
+*.key
+*.p12
+*.pfx
+*.pem
+*.der
+*.sig
+*.pcrs
+*.msg
+*.pin
+config/policy.toml
+config/agent.toml

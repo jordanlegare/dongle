@@ -11,11 +11,11 @@ A Linux early-boot access gate for registered hardware signing keys, TPM 2.0 mea
 3. A registered P-256 private key in a PKCS#11 hardware token signs the challenge. The private key is never exported.
 4. The TPM 2.0 Attestation Key (AK) quotes the configured PCR set using the same server nonce. The service verifies the quote with `tpm2_checkquote` and checks the PCR snapshot against the registered asset baseline.
 5. The service checks the dongle-to-user and user-to-asset bindings, consumes the challenge, and issues a short-lived allow/deny response. The initramfs continues boot only on an allow response.
-6. When configured, the service publishes the endpoint asset's health/status to Anduril Lattice using its documented REST Entities API. Lattice is an audit/asset-visibility integration, not the root of trust for boot admission.
+6. When configured with an operator-supplied location, the service publishes the endpoint as a persistent Lattice asset and records the latest user/dongle authorization state. Local TOML remains the enrollment authority; Lattice is an audit/asset-visibility integration, not the root of trust for boot admission.
 
 ## FIPS 140-3
 
-The default FIPS build pins `aws-lc-rs` 1.17.1 with its `fips` feature, which selects AWS-LC-FIPS 3.x (CMVP certificates #5298 dynamic / #5314 static). Validation applies only when the validated module, approved mode, exact build, and operating environment match the applicable NIST security policy. Selecting approved algorithms or enabling a Cargo feature is not a substitute for a module validation or a deployment compliance assessment.
+The default build pins `aws-lc-rs` 1.18.1 with its `fips` feature, selecting AWS-LC-FIPS 4.x. NIST lists the AWS-LC 4 dynamic and static modules as active under CMVP certificates #5595 and #5596. The binaries check FIPS mode at startup. Validation still applies only when the validated module, approved mode, exact build, and operating environment match the applicable NIST security policy; this does not certify the dongle, TPM, host, kernel, or complete deployment.
 
 ## Components
 

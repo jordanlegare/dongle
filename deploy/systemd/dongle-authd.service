@@ -1,0 +1,30 @@
+[Unit]
+Description=Dongle and TPM boot authorization service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dongle
+Group=dongle
+ExecStart=/usr/local/sbin/dongle-authd /etc/dongle/policy.toml
+EnvironmentFile=-/etc/dongle/lattice.env
+Environment=RUST_LOG=info
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
