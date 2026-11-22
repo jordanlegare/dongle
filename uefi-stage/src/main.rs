@@ -9,7 +9,7 @@ use core::time::Duration;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uefi::{
     boot::{self, LoadImageSource},
-    guid, prelude::*, Guid,
+    prelude::*,
     proto::{
         BootPolicy,
         device_path::text::DevicePathFromText,
@@ -26,8 +26,10 @@ const MAX_PCR_DATA: usize = 4096;
 
 // UEFI TLS Service Binding and TLS Configuration protocol GUIDs.
 // Firmware must expose these and enforce peer certificate validation.
-const TLS_SERVICE_BINDING: Guid = guid!("952cb795-ff36-48cf-a249-4df486d6ab8d");
-const TLS_CONFIGURATION: Guid = guid!("1682fe44-bd7a-4407-b7c7-dca37ca3922d");
+const TLS_SERVICE_BINDING: uefi::Guid =
+    uefi::Guid::parse_or_panic("952cb795-ff36-48cf-a249-4df486d6ab8d");
+const TLS_CONFIGURATION: uefi::Guid =
+    uefi::Guid::parse_or_panic("1682fe44-bd7a-4407-b7c7-dca37ca3922d");
 
 // Vendor adapter contract. Install a signed UEFI driver implementing this
 // protocol before this application in the firmware driver/boot sequence.
@@ -149,7 +151,7 @@ fn decode_hex(input: &str) -> Result<Vec<u8>, Status> {
     Ok(out)
 }
 
-fn has_protocol(guid: &Guid) -> bool {
+fn has_protocol(guid: &uefi::Guid) -> bool {
     boot::locate_handle_buffer(boot::SearchType::ByProtocol(guid)).is_ok()
 }
 
