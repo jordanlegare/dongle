@@ -1,0 +1,51 @@
+#!/bin/sh
+set -e
+
+PREREQ=""
+
+prereqs() {
+    echo "$PREREQ"
+}
+
+case "$1" in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+AGENT_BIN="/usr/local/sbin/dongle-agent"
+PKCS11_TOOL="/usr/bin/pkcs11-tool"
+TPM2_QUOTE="/usr/bin/tpm2_quote"
+PCSC_DAEMON="/usr/sbin/pcscd"
+PKCS11_MODULE=$(printenv PKCS11_MODULE_PATH 2>/dev/null || true)
+if [ -z "$PKCS11_MODULE" ]; then
+    PKCS11_MODULE="/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so"
+fi
+
+for required in "$AGENT_BIN" "$PKCS11_TOOL" "$TPM2_QUOTE" "$PCSC_DAEMON" "$PKCS11_MODULE"; do
+    if [ ! -x "$required" ] && [ ! -f "$required" ]; then
+        echo "dongle initramfs: required file missing: $required" >&2
+        exit 1
+    fi
+done
+
+copy_exec "$AGENT_BIN" /usr/local/sbin
+copy_exec "$PKCS11_TOOL" /usr/bin
+copy_exec "$TPM2_QUOTE" /usr/bin
+copy_exec "$PCSC_DAEMON" /usr/sbin
+copy_exec "$PKCS11_MODULE" "$(dirname "$PKCS11_MODULE")"
+
+if [ ! -f /etc/dongle/agent.toml ]; then
+    echo "dongle initramfs: /etc/dongle/agent.toml is missing" >&2
+    exit 1
+fi
+copy_file config /etc/dongle/agent.toml /etc/dongle/agent.toml
+
+if [ ! -f /etc/ssl/certs/ca-certificates.crt ]; then
+    echo "dongle initramfs: CA bundle missing; install ca-certificates" >&2
+    exit 1
+fi
+copy_file config /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
