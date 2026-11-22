@@ -3,17 +3,16 @@
 
 extern crate alloc;
 
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{format, vec::Vec};
+use core::time::Duration;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uefi::{
-    boot,
+    boot::{self, LoadImageSource},
     prelude::*,
     proto::{
+        device_path::text::DevicePathFromText,
+        BootPolicy,
         network::{
             http::{HttpHelper, HttpMethod},
             ip4config2::Ip4Config2,
@@ -325,8 +324,47 @@ fn authorize() -> Result<(), Status> {
     }
 
     uefi::println!("Authorization granted for asset {}.", asset_id);
-    uefi::println!("Firmware will return success to its configured boot manager.");
     Ok(())
+}
+
+fn chainload_next_stage() -> Result<(), Status> {
+    let device_path_text = config_value(option_env!("DONGLE_UEFI_NEXT_BOOT_DEVICE_PATH"))?;
+    let device_path_text = uefi::CString16::try_from(device_path_text)
+        .map_err(|_| Status::INVALID_PARAMETER)?;
+
+    let parser_handle = boot::get_handle_for_protocol::<DevicePathFromText>()
+        .map_err(|_| Status::UNSUPPORTED)?;
+    let device_path = {
+        let parser = boot::open_protocol_exclusive::<DevicePathFromText>(parser_handle)
+            .map_err(|_| Status::UNSUPPORTED)?;
+        parser
+            .convert_text_to_device_path(&device_path_text)
+            .map_err(|_| Status::INVALID_PARAMETER)?
+    };
+
+    uefi::println!("Loading the configured next-stage bootloader...");
+    let image = boot::load_image(
+        boot::image_handle(),
+        LoadImageSource::FromDevicePath {
+            device_path: &device_path,
+            boot_policy: BootPolicy::BootSelection,
+        },
+    )
+    .map_err(|_| Status::SECURITY_VIOLATION)?;
+
+    // UEFI LoadImage enforces the platform Secure Boot image policy.
+    // If the next loader unexpectedly returns, do not hand control back to
+    // Boot Manager, which might try an unauthenticated fallback Boot#### entry.
+    boot::start_image(image).map_err(|_| Status::ABORTED)?;
+    Err(Status::ABORTED)
+}
+
+fn halt_on_denial() -> ! {
+    // Keep control in the authenticated stage. Returning an error to firmware
+    // can cause some Boot Managers to attempt the next Boot#### option.
+    loop {
+        boot::stall(Duration::from_secs(5));
+    }
 }
 
 #[entry]
@@ -335,11 +373,15 @@ fn main() -> Status {
         return Status::LOAD_ERROR;
     }
 
-    match authorize() {
-        Ok(()) => Status::SUCCESS,
-        Err(status) => {
-            uefi::println!("Dongle pre-OS gate denied boot: {}", status);
-            Status::SECURITY_VIOLATION
-        }
+    if let Err(status) = authorize() {
+        uefi::println!("Dongle pre-OS gate denied boot: {}", status);
+        halt_on_denial();
     }
+
+    if let Err(status) = chainload_next_stage() {
+        uefi::println!("Unable to start approved next boot stage: {}", status);
+        halt_on_denial();
+    }
+
+    halt_on_denial()
 }
