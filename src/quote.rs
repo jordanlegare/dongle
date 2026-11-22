@@ -1,4 +1,7 @@
-use crate::{config::AssetPolicy, protocol::{decode_b64, AuthorizeRequest}};
+use crate::{
+    config::AssetPolicy,
+    protocol::{decode_b64, AuthorizeRequest},
+};
 use aws_lc_rs::digest::{digest, SHA256};
 use std::{fs, process::Command};
 use tempfile::tempdir;
@@ -16,6 +19,10 @@ pub fn verify_tpm_quote(
     anyhow::ensure!(!quote_message.is_empty(), "TPM quote message is empty");
     anyhow::ensure!(!quote_signature.is_empty(), "TPM quote signature is empty");
     anyhow::ensure!(!pcr_values.is_empty(), "TPM PCR snapshot is empty");
+    anyhow::ensure!(
+        !asset.pcr_selection.trim().is_empty(),
+        "registered asset PCR selection is empty"
+    );
 
     let expected = asset.approved_pcrs_sha256.trim().to_ascii_lowercase();
     anyhow::ensure!(
@@ -43,13 +50,13 @@ pub fn verify_tpm_quote(
     fs::write(&pcr_path, pcr_values)?;
     fs::write(&public_path, ak_public_pem)?;
 
-    // tpm2_checkquote validates the AK signature, the server nonce qualification,
-    // and that the supplied PCR file is the PCR data bound into the quote.
+    // Check both quote authenticity/nonce and exact approved PCR selection.
     let output = Command::new(checkquote_path)
         .arg("--public").arg(&public_path)
         .arg("--message").arg(&message_path)
         .arg("--signature").arg(&signature_path)
         .arg("--pcr").arg(&pcr_path)
+        .arg("--pcr-list").arg(&asset.pcr_selection)
         .arg("--hash-algorithm").arg("sha256")
         .arg("--qualification").arg(expected_nonce_hex)
         .output()
