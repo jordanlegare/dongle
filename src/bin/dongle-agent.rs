@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use aws_lc_rs::digest::{digest, SHA256};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use dongle::{
     config::AgentConfig,
@@ -43,9 +44,13 @@ fn ecdsa_raw_p256_to_der(raw: &[u8]) -> Result<Vec<u8>> {
 
 fn sign_with_pkcs11(config: &AgentConfig, payload: &[u8]) -> Result<Vec<u8>> {
     let dir = tempdir().context("creating PKCS#11 workspace")?;
-    let input_path = dir.path().join("challenge.bin");
+    let input_path = dir.path().join("challenge.sha256");
     let output_path = dir.path().join("signature.raw");
-    fs::write(&input_path, payload)?;
+
+    // CKM_ECDSA consumes a pre-hashed digest. Hash with the configured
+    // AWS-LC-FIPS module so the signature matches server-side P-256/SHA-256.
+    let payload_digest = digest(&SHA256, payload);
+    fs::write(&input_path, payload_digest.as_ref())?;
 
     // Do not pass the PIN as a command-line argument or environment variable.
     // pkcs11-tool prompts on the initramfs console after --login.
@@ -153,7 +158,6 @@ async fn run(config: AgentConfig) -> Result<()> {
 async fn main() {
     let config_path = env::args().nth(1).unwrap_or_else(|| "/etc/dongle/agent.toml".to_string());
     let result = AgentConfig::load(&config_path).and_then(|config| {
-        // Validate that a URL is configured before starting any token interaction.
         if !config.service_url.starts_with("https://") {
             anyhow::bail!("service_url must use HTTPS");
         }
