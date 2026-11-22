@@ -1,0 +1,19 @@
+[package]
+name = "dongle-uefi-stage"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Pre-OS UEFI authentication stage for the Dongle boot gate"
+
+[dependencies]
+base64 = { version = "0.22", default-features = false, features = ["alloc"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+uefi = { version = "=0.41.0", features = ["alloc", "global_allocator", "logger", "panic_handler"] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
