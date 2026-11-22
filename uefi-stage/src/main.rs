@@ -9,7 +9,7 @@ use core::time::Duration;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uefi::{
     boot::{self, LoadImageSource},
-    prelude::*,
+    guid, prelude::*, Guid,
     proto::{
         BootPolicy,
         device_path::text::DevicePathFromText,
