@@ -11,7 +11,7 @@ A Linux early-boot access gate for registered hardware signing keys, TPM 2.0 mea
 3. A registered P-256 private key in a PKCS#11 hardware token signs the challenge. The private key is never exported.
 4. The TPM 2.0 Attestation Key (AK) quotes the configured PCR set using the same server nonce. The service verifies the quote with `tpm2_checkquote` and checks the PCR snapshot against the registered asset baseline.
 5. The service checks the dongle-to-user and user-to-asset bindings, consumes the challenge, and issues a short-lived allow/deny response. The initramfs continues boot only on an allow response.
-6. When configured, the service publishes the endpoint asset's health/status to Anduril Lattice using its documented REST Entities API. Lattice is an audit/asset-visibility integration, not the root of trust for boot admission.
+6. When configured with an operator-supplied location, the service publishes the endpoint as a persistent Lattice asset and records the latest user/dongle authorization state. Local TOML remains the enrollment authority; Lattice is an audit/asset-visibility integration, not the root of trust for boot admission.
 
 ## FIPS 140-3
 
