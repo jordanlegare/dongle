@@ -14,6 +14,7 @@ The trust chain is:
 - PKCS#11 token -> signs a domain-separated challenge using its non-exportable P-256 key.
 - TPM 2.0 AK -> quotes the configured PCR selection with the same fresh nonce.
 - Authorization service -> verifies token signature, TPM quote, approved PCR baseline, and the registry relationships.
+- Local policy TOML -> authoritative enrollment registry for users, dongles, assets, and allowed bindings.
 - Lattice -> receives the endpoint asset's authorization status for operator visibility. Lattice reporting is not itself the cryptographic boot trust anchor.
 
 A network outage, unknown key, expired challenge, invalid signature, unregistered TPM, PCR drift, or service error causes a fail-closed boot denial. Provide a separately controlled recovery procedure before enabling this on production systems.
@@ -142,9 +143,9 @@ Use these variables:
 - ENVIRONMENT_TOKEN: the environment's Lattice auth token.
 - SANDBOXES_TOKEN: the account-level Sandboxes bearer token.
 
-The reporter sends Authorization: Bearer <ENVIRONMENT_TOKEN> and Anduril-Sandbox-Authorization: Bearer <SANDBOXES_TOKEN> to Lattice's documented PUT /api/v1/entities endpoint. It publishes a stable Linux endpoint asset entity and reports the most recent boot authorization state. It does not send the dongle private key, token PIN, TPM private key, or full quote payload to Lattice. Reporting is best-effort: Lattice being unavailable does not grant access and does not reverse an already verified decision.
+For each asset you want published, add an `[assets.<id>.lattice_location]` table to the server policy with its real `latitude_degrees`, `longitude_degrees`, and optional `altitude_hae_meters`. The publisher skips an asset without this configured position rather than inventing coordinates. The reporter sends Authorization: Bearer <ENVIRONMENT_TOKEN> and Anduril-Sandbox-Authorization: Bearer <SANDBOXES_TOKEN> to Lattice's documented PUT /api/v1/entities endpoint. It publishes a stable, persistent `TEMPLATE_ASSET` entity with location and `milView` components, plus the latest user/dongle boot authorization status. It does not send the dongle private key, token PIN, TPM private key, or full quote payload to Lattice. Reporting is best-effort: Lattice being unavailable does not grant access and does not reverse an already verified decision.
 
-The example uses the supported environment-token flow. Rotate environment tokens before expiry. OAuth client-credentials support can be added when it is enabled for the target Sandbox; the Lattice documentation currently describes that flow as beta in some deployments.
+The local TOML policy remains the authority for the enrolled public keys and user-to-asset permissions; this initial integration publishes status to Lattice but does not yet read authorization policy back from Lattice. The example uses the supported environment-token flow. Rotate environment tokens before expiry. OAuth client-credentials support can be added when it is enabled for the target Sandbox; the Lattice documentation currently describes that flow as beta in some deployments.
 
 ## 8. Kernel and secure-boot controls
 
