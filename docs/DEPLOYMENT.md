@@ -118,7 +118,7 @@ Copy the agent config and edit it for the asset, user, token label, key ID, PKCS
     install -D -m 0755 deploy/initramfs-tools/hooks/dongle-agent /etc/initramfs-tools/hooks/dongle-agent
     install -D -m 0755 deploy/initramfs-tools/scripts/local-bottom/dongle-auth /etc/initramfs-tools/scripts/local-bottom/dongle-auth
 
-The hook includes the agent, OpenSC token utility/module, PC/SC daemon, TPM quote tool, agent config, and system CA bundle in the initramfs. The example module path is Debian/Ubuntu x86-64 specific; adjust PKCS11_MODULE_PATH in the hook for other architectures or token vendors.
+The hook includes the agent, OpenSC token utility/module, PC/SC daemon, TPM quote tool, agent config, the TPM AK context at /etc/dongle/ak.ctx, and the system CA bundle in the initramfs. Protect the AK context and keep the initramfs image signed and access-controlled. The example module path is Debian/Ubuntu x86-64 specific; adjust PKCS11_MODULE_PATH in the hook for other architectures or token vendors.
 
 Ensure the initramfs brings up networking before local-bottom runs. For DHCP-managed systems, the kernel command line commonly uses ip=dhcp; static environments must configure the interface, DNS, route, and time/CA trust in the initramfs. Confirm that the authorization host is reachable from the initramfs, not merely after the real root has booted.
 
