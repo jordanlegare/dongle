@@ -48,8 +48,16 @@ pub struct AssetPolicy {
     pub ak_public_key_pem_path: String,
     /// Lowercase SHA-256 digest of the serialized PCR output file from tpm2_quote.
     pub approved_pcrs_sha256: String,
-    /// Expected PCR selection used to create the serialized baseline.
+    /// Expected PCR selection used to create the Linux/initramfs baseline.
     pub pcr_selection: String,
+    /// Separate SHA-256 digest captured in the UEFI pre-OS phase, before the OS
+    /// loader/kernel/initramfs are started. Required for UEFI-stage authorization.
+    #[serde(default)]
+    pub uefi_approved_pcrs_sha256: Option<String>,
+    /// PCR selection used by the platform UEFI attestation driver for its
+    /// pre-OS quote. The serialized quote PCR data hash binds the actual selection.
+    #[serde(default)]
+    pub uefi_pcr_selection: Option<String>,
     /// Optional operator-supplied position used when publishing this asset to Lattice.
     #[serde(default)]
     pub lattice_location: Option<LatticeLocation>,
@@ -94,6 +102,22 @@ impl Policy {
         for (asset_id, asset) in &policy.assets {
             if asset.pcr_selection.trim().is_empty() {
                 anyhow::bail!("assets.{asset_id}.pcr_selection cannot be empty");
+            }
+            match (&asset.uefi_approved_pcrs_sha256, &asset.uefi_pcr_selection) {
+                (Some(digest), Some(selection)) => {
+                    anyhow::ensure!(
+                        digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit()),
+                        "assets.{asset_id}.uefi_approved_pcrs_sha256 must be a 64-character SHA-256 hex digest"
+                    );
+                    anyhow::ensure!(
+                        !selection.trim().is_empty(),
+                        "assets.{asset_id}.uefi_pcr_selection cannot be empty"
+                    );
+                }
+                (None, None) => {}
+                _ => anyhow::bail!(
+                    "assets.{asset_id} must configure both uefi_approved_pcrs_sha256 and uefi_pcr_selection or neither"
+                ),
             }
             if let Some(location) = &asset.lattice_location {
                 anyhow::ensure!(

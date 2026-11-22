@@ -1,5 +1,6 @@
 use aws_lc_rs::rand::{SecureRandom, SystemRandom};
 use axum::{
+    body::Bytes,
     extract::{DefaultBodyLimit, State},
     http::StatusCode,
     response::IntoResponse,
@@ -297,6 +298,71 @@ async fn authorize(
     }
 }
 
+/// Firmware HTTP stacks do not consistently attach Content-Type: application/json.
+/// These two UEFI-only routes accept bounded raw JSON bodies while reusing the
+/// exact same challenge issuance and authorization handlers as the Linux agent.
+async fn issue_challenge_uefi(
+    State(state): State<AppState>,
+    body: Bytes,
+) -> Result<Json<ChallengeResponse>, ApiError> {
+    let request: ChallengeRequest = serde_json::from_slice(&body)
+        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "invalid challenge JSON"))?;
+    let Some(asset) = state.policy.assets.get(&request.asset_id) else {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "asset is not enrolled for UEFI authorization",
+        ));
+    };
+    if asset.uefi_approved_pcrs_sha256.is_none() || asset.uefi_pcr_selection.is_none() {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "asset has no approved UEFI pre-OS PCR baseline",
+        ));
+    }
+    issue_challenge(State(state), Json(request)).await
+}
+
+async fn authorize_uefi(
+    State(state): State<AppState>,
+    body: Bytes,
+) -> Result<Json<AuthorizeResponse>, ApiError> {
+    let request: AuthorizeRequest = serde_json::from_slice(&body)
+        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "invalid authorization JSON"))?;
+
+    // UEFI measurements are taken before the OS loader and kernel execute.
+    // Never compare them with the separate post-boot initramfs baseline.
+    let Some(asset) = state.policy.assets.get(&request.asset_id) else {
+        return Err(api_error(StatusCode::FORBIDDEN, "asset is not enrolled"));
+    };
+    let Some(uefi_digest) = asset.uefi_approved_pcrs_sha256.clone() else {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "asset has no approved UEFI pre-OS PCR baseline",
+        ));
+    };
+    let Some(uefi_selection) = asset.uefi_pcr_selection.clone() else {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "asset has no UEFI PCR selection",
+        ));
+    };
+
+    let mut uefi_policy = (*state.policy).clone();
+    let uefi_asset = uefi_policy
+        .assets
+        .get_mut(&request.asset_id)
+        .ok_or_else(|| api_error(StatusCode::FORBIDDEN, "asset is not enrolled"))?;
+    uefi_asset.approved_pcrs_sha256 = uefi_digest;
+    uefi_asset.pcr_selection = uefi_selection;
+
+    let uefi_state = AppState {
+        policy: Arc::new(uefi_policy),
+        pending: Arc::clone(&state.pending),
+        lattice: state.lattice.clone(),
+    };
+    authorize(State(uefi_state), Json(request)).await
+}
+
 async fn healthz() -> impl IntoResponse {
     (StatusCode::OK, "ok")
 }
@@ -337,6 +403,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/healthz", get(healthz))
         .route("/v1/challenge", post(issue_challenge))
         .route("/v1/authorize", post(authorize))
+        .route("/v1/uefi/challenge", post(issue_challenge_uefi))
+        .route("/v1/uefi/authorize", post(authorize_uefi))
         .layer(DefaultBodyLimit::max(64 * 1024))
         .with_state(state);
 

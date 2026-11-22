@@ -22,3 +22,9 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Compile and run tests with default FIPS feature
         run: cargo test --all-targets
+      - name: Check UEFI stage formatting
+        run: cargo fmt --manifest-path uefi-stage/Cargo.toml -- --check
+      - name: Install UEFI target
+        run: rustup target add x86_64-unknown-uefi
+      - name: Build pre-OS UEFI application
+        run: cargo build --manifest-path uefi-stage/Cargo.toml --target x86_64-unknown-uefi --release
