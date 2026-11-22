@@ -48,8 +48,19 @@ pub struct AssetPolicy {
     pub ak_public_key_pem_path: String,
     /// Lowercase SHA-256 digest of the serialized PCR output file from tpm2_quote.
     pub approved_pcrs_sha256: String,
-    /// Exact SHA-256 PCR selection that must be included in every quote.
+    /// Expected PCR selection used to create the serialized baseline.
     pub pcr_selection: String,
+    /// Optional operator-supplied position used when publishing this asset to Lattice.
+    #[serde(default)]
+    pub lattice_location: Option<LatticeLocation>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct LatticeLocation {
+    pub latitude_degrees: f64,
+    pub longitude_degrees: f64,
+    #[serde(default)]
+    pub altitude_hae_meters: f64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -83,6 +94,22 @@ impl Policy {
         for (asset_id, asset) in &policy.assets {
             if asset.pcr_selection.trim().is_empty() {
                 anyhow::bail!("assets.{asset_id}.pcr_selection cannot be empty");
+            }
+            if let Some(location) = &asset.lattice_location {
+                anyhow::ensure!(
+                    location.latitude_degrees.is_finite()
+                        && (-90.0..=90.0).contains(&location.latitude_degrees),
+                    "assets.{asset_id}.lattice_location.latitude_degrees must be between -90 and 90"
+                );
+                anyhow::ensure!(
+                    location.longitude_degrees.is_finite()
+                        && (-180.0..=180.0).contains(&location.longitude_degrees),
+                    "assets.{asset_id}.lattice_location.longitude_degrees must be between -180 and 180"
+                );
+                anyhow::ensure!(
+                    location.altitude_hae_meters.is_finite(),
+                    "assets.{asset_id}.lattice_location.altitude_hae_meters must be finite"
+                );
             }
         }
         Ok(policy)
