@@ -298,7 +298,6 @@ async fn authorize(
     }
 }
 
-
 /// Firmware HTTP stacks do not consistently attach Content-Type: application/json.
 /// These two UEFI-only routes accept bounded raw JSON bodies while reusing the
 /// exact same challenge issuance and authorization handlers as the Linux agent.
@@ -309,7 +308,10 @@ async fn issue_challenge_uefi(
     let request: ChallengeRequest = serde_json::from_slice(&body)
         .map_err(|_| api_error(StatusCode::BAD_REQUEST, "invalid challenge JSON"))?;
     let Some(asset) = state.policy.assets.get(&request.asset_id) else {
-        return Err(api_error(StatusCode::FORBIDDEN, "asset is not enrolled for UEFI authorization"));
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "asset is not enrolled for UEFI authorization",
+        ));
     };
     if asset.uefi_approved_pcrs_sha256.is_none() || asset.uefi_pcr_selection.is_none() {
         return Err(api_error(
