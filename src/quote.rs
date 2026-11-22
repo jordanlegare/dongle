@@ -56,7 +56,6 @@ pub fn verify_tpm_quote(
         .arg("--message").arg(&message_path)
         .arg("--signature").arg(&signature_path)
         .arg("--pcr").arg(&pcr_path)
-        .arg("--pcr-list").arg(&asset.pcr_selection)
         .arg("--hash-algorithm").arg("sha256")
         .arg("--qualification").arg(expected_nonce_hex)
         .output()
