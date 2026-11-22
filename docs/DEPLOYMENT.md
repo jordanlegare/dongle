@@ -77,7 +77,7 @@ Choose PCRs that match the platform boot chain and policy. The example uses SHA-
       -o /tmp/approved.pcrs -g sha256
     sha256sum /tmp/approved.pcrs
 
-Set approved_pcrs_sha256 to the 64-character digest printed by sha256sum. The same PCR selection must be set in both the server asset policy and the initramfs agent config. The service verifies the TPM signature, qualifying nonce, PCR selection, and PCR data using tpm2_checkquote, then compares the serialized PCR snapshot digest to the registered baseline.
+Set approved_pcrs_sha256 to the 64-character digest printed by sha256sum. The same PCR selection must be set in both the server asset policy and the initramfs agent config. The service verifies the TPM signature, qualifying nonce, exact registered PCR selection, and PCR data using tpm2_checkquote, then compares the serialized PCR snapshot digest to the registered baseline.
 
 PCR baselines change when measured boot components change. After a kernel, bootloader, Secure Boot database, initramfs, or relevant firmware update, rebaseline only after the new boot chain is reviewed and approved. Never automatically trust the first new PCR value observed after a failed check.
 
@@ -101,7 +101,8 @@ The service listens on loopback by default at 127.0.0.1:8765. Put it behind a TL
 Create a service account and install the systemd unit:
 
     useradd --system --home /var/lib/dongle --shell /usr/sbin/nologin dongle
-    install -D -m 0640 -o root -g dongle /etc/dongle/policy.toml /etc/dongle/policy.toml
+    chown root:dongle /etc/dongle/policy.toml
+    chmod 0640 /etc/dongle/policy.toml
     install -D -m 0644 deploy/systemd/dongle-authd.service /etc/systemd/system/dongle-authd.service
     systemctl daemon-reload
     systemctl enable --now dongle-authd
