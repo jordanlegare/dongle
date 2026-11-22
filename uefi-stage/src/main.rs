@@ -7,6 +7,7 @@ use alloc::{format, string::String, vec::Vec};
 use core::time::Duration;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use uefi_raw::protocol::network::http::HttpMethod;
 use uefi::{
     boot::{self, LoadImageSource},
     prelude::*,
@@ -14,7 +15,7 @@ use uefi::{
         BootPolicy,
         device_path::text::DevicePathFromText,
         network::{
-            http::{HttpHelper, HttpMethod},
+            http::HttpHelper,
             ip4config2::Ip4Config2,
             snp::SimpleNetwork,
         },
