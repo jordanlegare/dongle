@@ -48,6 +48,8 @@ pub struct AssetPolicy {
     pub ak_public_key_pem_path: String,
     /// Lowercase SHA-256 digest of the serialized PCR output file from tpm2_quote.
     pub approved_pcrs_sha256: String,
+    /// Exact SHA-256 PCR selection that must be included in every quote.
+    pub pcr_selection: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -77,6 +79,11 @@ impl Policy {
             .with_context(|| format!("parsing policy file {}", path.display()))?;
         if policy.server.challenge_ttl_seconds == 0 || policy.server.challenge_ttl_seconds > 300 {
             anyhow::bail!("server.challenge_ttl_seconds must be between 1 and 300");
+        }
+        for (asset_id, asset) in &policy.assets {
+            if asset.pcr_selection.trim().is_empty() {
+                anyhow::bail!("assets.{asset_id}.pcr_selection cannot be empty");
+            }
         }
         Ok(policy)
     }
