@@ -20,6 +20,8 @@ jobs:
           components: rustfmt
       - name: Check formatting
         run: cargo fmt --all -- --check
+      - name: Check initramfs script syntax
+        run: sh -n deploy/initramfs-tools/scripts/local-bottom/dongle-auth
       - name: Compile and run tests with default FIPS feature
         run: cargo test --all-targets
       - name: Check UEFI stage formatting
