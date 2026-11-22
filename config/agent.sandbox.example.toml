@@ -1,0 +1,20 @@
+# Copy to /etc/dongle/agent.toml.
+# The config is embedded in the initramfs by the supplied hook.
+# Keep this file root-owned and not writable by unprivileged users.
+
+service_url = "https://dongle-auth.example.internal"
+user_id = "operator"
+dongle_id = "operator-key-01"
+asset_id = "linux-workstation-01"
+
+# OpenSC PKCS#11 provider and key object on the hardware token.
+pkcs11_module_path = "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so"
+pkcs11_token_label = "REPLACE_WITH_TOKEN_LABEL"
+pkcs11_key_id = "01"
+pkcs11_tool_path = "/usr/bin/pkcs11-tool"
+
+# TPM Attestation Key context must refer to a non-exportable key provisioned
+# in the computer's TPM 2.0. The AK public key is registered server-side.
+tpm_ak_context_path = "/etc/dongle/ak.ctx"
+tpm2_quote_path = "/usr/bin/tpm2_quote"
+pcr_selection = "sha256:0,2,4,7,10,11"
