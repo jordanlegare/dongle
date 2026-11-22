@@ -124,6 +124,8 @@ The hook includes the agent, OpenSC token utility/module, PC/SC daemon, TPM quot
 
 Ensure the initramfs brings up networking before local-bottom runs. For DHCP-managed systems, the kernel command line commonly uses ip=dhcp; static environments must configure the interface, DNS, route, and time/CA trust in the initramfs. Confirm that the authorization host is reachable from the initramfs, not merely after the real root has booted.
 
+The local-bottom gate displays a console splash while authorization is running. It tells the operator to keep the hardware key connected and to enter the token PIN if prompted; the PKCS#11 prompt remains interactive on the initramfs console. A verified allow decision displays **ACCESS GRANTED** and the intended `switch_root` handoff. A denial or operational failure displays **ACCESS DENIED**, waits briefly so the message is readable, and then invokes the initramfs panic path. The splash uses basic ANSI console colors and shell built-ins; it does not require Plymouth or add packages to the initramfs.
+
 Rebuild and inspect the initramfs:
 
     update-initramfs -u -k all
