@@ -7,7 +7,7 @@ description = "Early-boot hardware-key and TPM attestation gate with Lattice ass
 
 [features]
 default = ["fips"]
-fips = ["aws-lc-rs/fips"]
+fips = ["aws-lc-rs/fips", "rustls/fips"]
 
 [dependencies]
 anyhow = "1"
