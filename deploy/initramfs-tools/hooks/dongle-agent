@@ -1,5 +1,6 @@
 #!/bin/sh
 set -e
+umask 077
 
 PREREQ=""
 
@@ -43,6 +44,14 @@ if [ ! -f /etc/dongle/agent.toml ]; then
     exit 1
 fi
 copy_file config /etc/dongle/agent.toml /etc/dongle/agent.toml
+
+# The TPM AK context must be present in initramfs for tpm2_quote to use it.
+# Treat it as protected provisioning material: root-only in the initramfs.
+if [ ! -f /etc/dongle/ak.ctx ]; then
+    echo "dongle initramfs: /etc/dongle/ak.ctx is missing" >&2
+    exit 1
+fi
+copy_file config /etc/dongle/ak.ctx /etc/dongle/ak.ctx
 
 if [ ! -f /etc/ssl/certs/ca-certificates.crt ]; then
     echo "dongle initramfs: CA bundle missing; install ca-certificates" >&2
