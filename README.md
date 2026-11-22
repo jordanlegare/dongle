@@ -68,67 +68,56 @@ The current implementation is a boot gate, not a complete enterprise identity-ma
 
 ## Architecture
 
-The normal boot chain remains responsible for verifying the signed bootloader, kernel, and initramfs. Dongle adds an authorization check inside the initramfs before the system transitions to its real root filesystem.
+Dongle supports two enforcement points. The preferred pre-OS mode runs the Rust UEFI application before the OS loader, kernel, and initramfs. The existing Linux agent remains available for systems without a supported UEFI token adapter, or as an intentionally configured second check. Do not leave an unprotected boot entry as a fallback around a mandatory UEFI gate.
 
     UEFI Secure Boot
           |
           v
-    Signed bootloader / kernel / initramfs
+    dongle_uefi_stage.efi
+       |         |            |
+       |         |            +---- TCG2 TPM capability
+       |         +----------------- Firmware DHCP / HTTP / TLS
+       +--------------------------- Vendor dongle-attestation protocol
           |
           v
-    Initramfs networking and device setup
-          |
-          v
-    dongle-agent
-       |            \
-       |             \---- TPM 2.0 quote
-       |                    |
-       |                    v
-       |              Computer Attestation Key
-       |
-       +---- PKCS#11 request to hardware dongle
-       |        |
-       |        v
-       |    P-256 signature
-       |
-       v
-    HTTPS authorization request
-          |
-          v
-    TLS reverse proxy / protected network boundary
+    HTTPS challenge + authorize
           |
           v
     dongle-authd
        |      \
        |       \---- Optional Lattice asset status
        |
-       +---- Local enrollment policy
-       |
+       +---- Enrollment policy
        +---- Dongle signature verification
-       |
-       +---- TPM quote and PCR baseline verification
+       +---- TPM quote / PCR verification
           |
           v
-    Allow / deny
+    Allow -> LoadImage / StartImage signed OS loader
+    Deny  -> stay halted before OS starts
+
+    Alternative client path (for systems without the UEFI adapter):
+    Signed bootloader / kernel / initramfs
           |
           v
-    Continue initramfs boot only on allow
+    Initramfs networking -> dongle-agent -> same dongle-authd
           |
           v
-       switch_root
+    Allow -> switch_root; Deny -> initramfs panic
 
 ### Components
 
 | Component | Location | Responsibility |
 |---|---|---|
+| **dongle-uefi-stage** | Firmware pre-OS phase | Configures DHCPv4, uses firmware HTTPS, obtains dongle/TPM evidence through the platform adapter, and chainloads the approved EFI loader |
+| **DongleAttestationProtocol adapter** | Signed UEFI vendor/platform driver | Bridges the token-specific interface and TPM quote facility to the UEFI app; never exports private key material |
 | **dongle-agent** | Protected client initramfs | Requests a challenge, prompts for token PIN through OpenSC, signs the challenge, obtains the TPM quote, and submits proof |
 | **dongle-authd** | Protected authorization host | Maintains in-memory challenges, loads enrollment policy, verifies dongle signatures and TPM evidence, and returns the decision |
 | **PKCS#11 token** | Hardware dongle | Holds the non-exportable P-256 private key used for challenge signing |
 | **TPM 2.0** | Managed computer | Holds the Attestation Key and produces a nonce-bound quote for the selected PCRs |
 | **tpm2_checkquote** | Authorization host | Checks the TPM quote signature, qualification value, and supplied PCR data |
 | **Lattice reporter** | Authorization host | Optionally publishes a persistent endpoint asset entity and the latest authorization result |
-| **initramfs-tools hook** | Client build system | Includes the agent and its required files in the generated initramfs |
-| **initramfs local-bottom script** | Client initramfs | Runs the agent before the real-root transition and panics on denial or failure |
+| **initramfs-tools hook** | Client build system | Includes the Linux agent and its required files in the generated initramfs |
+| **initramfs local-bottom script** | Client initramfs | Runs the Linux agent before the real-root transition and panics on denial or failure |
 
 ## UEFI pre-OS stage
 
@@ -289,9 +278,16 @@ Only endpoint identity/status metadata is sent. The implementation does not inte
     ├── .env.example
     ├── config/
     │   ├── agent.sandbox.example.toml
-    │   └── policy.sandbox.example.toml
+    │   ├── policy.sandbox.example.toml
+    │   └── uefi-stage.example.env
     ├── docs/
     │   └── DEPLOYMENT.md
+    ├── uefi-stage/
+    │   ├── Cargo.toml
+    │   ├── include/
+    │   │   └── dongle_attestation_protocol.h
+    │   └── src/
+    │       └── main.rs
     ├── deploy/
     │   ├── initramfs-tools/
     │   │   ├── hooks/
@@ -302,6 +298,7 @@ Only endpoint identity/status metadata is sent. The implementation does not inte
     │   └── systemd/
     │       └── dongle-authd.service
     ├── scripts/
+    │   ├── build-uefi-stage.sh
     │   └── export-sec1-public-key.sh
     └── src/
         ├── bin/
@@ -316,11 +313,12 @@ Only endpoint identity/status metadata is sent. The implementation does not inte
 
 ## Requirements
 
-The example deployment targets Debian/Ubuntu systems using **initramfs-tools** and an x86-64 OpenSC module path. Other distributions, architectures, token providers, and initramfs frameworks require adaptation and testing.
+The Linux client path targets Debian/Ubuntu systems using **initramfs-tools** and an x86-64 OpenSC module path. The separate UEFI pre-OS crate currently targets x86-64 UEFI firmware and requires a signed vendor token-adapter driver. Other distributions, architectures, token providers, and initramfs frameworks require adaptation and testing.
 
 ### Build host
 
 - Rust toolchain and Cargo.
+- Rust 1.91 or later plus the **x86_64-unknown-uefi** target for the pre-OS application.
 - A supported Linux build environment for the AWS-LC build.
 - Standard native build dependencies required by AWS-LC and the Rust dependency graph.
 
@@ -336,6 +334,8 @@ The example deployment targets Debian/Ubuntu systems using **initramfs-tools** a
 ### Managed client
 
 - UEFI Secure Boot-capable platform with a supported signed boot chain.
+- For the pre-OS path: UEFI DHCPv4, HTTP/TLS, DNS, TCG2, and a signed vendor driver implementing **DongleAttestationProtocol**.
+- Firmware TLS trust configured to verify the authorization server's certificate and server identity.
 - TPM 2.0 and a provisioned Attestation Key.
 - Hardware token that supports P-256 ECDSA through PKCS#11.
 - OpenSC, including **pkcs11-tool** and a compatible PKCS#11 module.
@@ -359,11 +359,11 @@ Run formatting and tests:
 
 Do not use **--no-default-features** for a deployment build. Generate and review a Cargo.lock for release builds, commit it to the deployment source, and use locked dependency resolution in controlled release pipelines.
 
-The GitHub Actions workflow runs formatting and tests using the default FIPS feature. A successful CI run validates the code against the runner's build environment; it does not validate the physical token, TPM, UEFI firmware, Secure Boot configuration, initramfs networking, Lattice tenant, or production operating environment.
+The GitHub Actions workflow runs formatting/tests for the Linux crate and compiles the UEFI target. A successful CI run validates compilation against the runner's build environment; it does not validate the physical token adapter, TPM, UEFI firmware, firmware TLS policy, Secure Boot configuration, initramfs networking, Lattice tenant, or production operating environment.
 
 ## Deployment overview
 
-The complete procedure is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The outline below describes the intended order.
+The complete procedure is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The outline below describes the intended order. Choose the enforcement path deliberately: a mandatory UEFI deployment must not retain another direct boot entry that bypasses it.
 
 ### 1. Build and install the binaries
 
@@ -404,6 +404,10 @@ Copy the agent configuration to **/etc/dongle/agent.toml**. Install the initramf
 Rebuild and inspect the initramfs before testing.
 
 See [Configure the initramfs agent](#configure-the-initramfs-agent).
+
+### Optional pre-OS installation
+
+For the UEFI path, follow [the UEFI pre-OS section in the deployment guide](docs/DEPLOYMENT.md#7-build-and-install-the-uefi-pre-os-stage). Build and sign the EFI application, install and sign the platform token-adapter driver, provision firmware TLS trust, then configure the full next-stage UEFI device path. The UEFI app authenticates before the kernel and initramfs are loaded. Do not treat the initramfs script as a security substitute if the firmware boot menu still allows a direct loader path.
 
 ### 6. Test with a recovery path
 
@@ -791,6 +795,7 @@ In particular:
 - AWS-LC's validation covers the specific AWS-LC module configuration and operating conditions described by its applicable CMVP certificate and security policy.
 - The external PKCS#11 hardware token must have its own applicable FIPS 140-3 validation and must be used in its approved mode if that is part of the compliance requirement.
 - The TPM, firmware, Secure Boot chain, operating system, kernel, initramfs, service configuration, and deployment environment are not certified by this repository.
+- The UEFI application does not link AWS-LC-FIPS; its TLS implementation is firmware-provided and its token/TPM evidence comes from a vendor adapter. Their exact cryptographic modules and operational environments require separate validation. The server's AWS-LC FIPS check does not validate those components.
 - OpenSC and the PKCS#11 API do not themselves prove that the attached token is a validated cryptographic module.
 - The startup FIPS-mode check does not perform a complete compliance assessment of the host or hardware.
 
@@ -829,15 +834,19 @@ The following are known limitations of this initial implementation and should be
 
 ### Boot integration
 
-- The provided scripts target Debian/Ubuntu **initramfs-tools**.
-- Initramfs networking setup is a deployment responsibility and must run before the enforcement script.
+- The Linux enforcement scripts target Debian/Ubuntu **initramfs-tools**. The independent UEFI stage is x86-64 only in this version.
+- The UEFI vendor token adapter is an ABI contract only; the repository does not include a driver for a specific dongle. Machines without it cannot use pre-OS token authentication.
+- The UEFI network setup currently supports DHCPv4 only; firmware HTTP/TLS and strict server-certificate validation must be validated per platform.
+- Initramfs networking setup is a deployment responsibility and must run before the Linux enforcement script.
 - The supplied example PKCS#11 module path is architecture/package specific.
 - The generated initramfs and its bootloader integration must be protected by the platform's Secure Boot chain.
 - A separate recovery mode and administrative override process must be designed and tested for each deployment.
 
 ## Further documentation
 
-- [Deployment guide](docs/DEPLOYMENT.md) — detailed prerequisites, enrollment, PCR baseline, service installation, initramfs setup, Lattice credentials, and negative tests.
+- [Deployment guide](docs/DEPLOYMENT.md) — detailed prerequisites, enrollment, PCR baseline, service installation, UEFI pre-OS stage, initramfs setup, Lattice reporting, and negative tests.
+- [UEFI attestation protocol](uefi-stage/include/dongle_attestation_protocol.h) — vendor driver ABI for token signing and TPM quote evidence.
+- [UEFI build configuration](config/uefi-stage.example.env) and [build helper](scripts/build-uefi-stage.sh) — endpoint identities, next-stage device path, and target build.
 - [Policy example](config/policy.sandbox.example.toml) — deny-by-default user, dongle, and asset enrollment policy.
 - [Agent configuration example](config/agent.sandbox.example.toml) — managed-client token, TPM, and HTTPS endpoint settings.
 - [Lattice environment example](.env.example) — environment and Sandboxes credential variable names.
