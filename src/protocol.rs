@@ -67,3 +67,41 @@ pub fn decode_b64(value: &str, field: &str) -> anyhow::Result<Vec<u8>> {
         .decode(value)
         .map_err(|e| anyhow::anyhow!("invalid base64 in {field}: {e}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::make_signing_payload;
+
+    #[test]
+    fn challenge_transcript_binds_all_identity_fields_and_nonce() {
+        let nonce = [0x5au8; 32];
+        let expected = make_signing_payload("challenge", "alice", "key-1", "host-1", &nonce);
+
+        assert_ne!(
+            expected,
+            make_signing_payload("challenge", "bob", "key-1", "host-1", &nonce)
+        );
+        assert_ne!(
+            expected,
+            make_signing_payload("challenge", "alice", "key-2", "host-1", &nonce)
+        );
+        assert_ne!(
+            expected,
+            make_signing_payload("challenge", "alice", "key-1", "host-2", &nonce)
+        );
+        assert_ne!(
+            expected,
+            make_signing_payload("challenge", "alice", "key-1", "host-1", &[0x5b; 32])
+        );
+    }
+
+    #[test]
+    fn challenge_transcript_is_domain_separated_and_deterministic() {
+        let nonce = [0x01u8; 32];
+        let first = make_signing_payload("c", "u", "d", "a", &nonce);
+        let second = make_signing_payload("c", "u", "d", "a", &nonce);
+
+        assert_eq!(first, second);
+        assert!(first.starts_with(b"ANDURIL-DONGLE-AUTH-V1\0"));
+    }
+}
