@@ -24,7 +24,7 @@ Build on a supported Linux build host with a Rust toolchain:
 
     cargo build --release --bins
 
-The default Cargo feature selects aws-lc-rs 1.17.1 with its FIPS feature enabled (AWS-LC-FIPS 3.x). Do not use --no-default-features. Keep the lockfile committed and review crypto dependency changes as controlled security changes.
+The default Cargo feature pins aws-lc-rs 1.18.1 and enables its FIPS feature, selecting AWS-LC-FIPS 4.x. The code checks AWS-LC FIPS mode at startup and installs the AWS-LC-backed rustls provider before opening HTTPS clients. Do not use --no-default-features. Keep Cargo.lock committed and review crypto dependency changes as controlled security changes.
 
 Install the binaries on the authorization host and boot client as appropriate:
 
@@ -175,7 +175,7 @@ Before production, test at least:
 
 ## 10. FIPS 140-3 scope and limitations
 
-The project uses AWS-LC-FIPS 3.x through aws-lc-rs 1.17.1 for the software ECDSA verification path and rustls provider. The AWS-LC 3.x module has CMVP certificates #5298 (dynamic) and #5314 (static). A FIPS claim is valid only when the exact validated module version, build/link mode, approved operating mode, and operating environment satisfy the vendor security policy and applicable CMVP conditions.
+The project pins aws-lc-rs 1.18.1 with the FIPS feature, which selects AWS-LC-FIPS 4.x for the software ECDSA verification path and rustls provider. As of 21 November 2026, NIST lists AWS-LC 4 Cryptographic Module as active under CMVP certificates #5595 (dynamic) and #5596 (static). Both certificates require operation in approved mode and installation, initialization, and configuration as specified in Section 11.1 of the applicable AWS security policy. The startup check confirms that the linked AWS-LC reports FIPS mode; it does not attest that the deployed binary, platform, external dongle/TPM, or operational configuration meets every condition of those certificates. A FIPS compliance claim requires matching the exact validated module build/link mode and operating environment to the certificate security policy.
 
 This does not certify the whole Dongle application, the hardware token, TPM, OS, kernel, boot chain, or deployment. The token and TPM have their own assurance/validation requirements. Consult the relevant NIST certificate/security policy and an accredited CMVP laboratory or compliance authority before making a compliance assertion.
 
