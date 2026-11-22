@@ -11,6 +11,7 @@ base64 = { version = "0.22", default-features = false, features = ["alloc"] }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
 uefi = { version = "=0.41.0", features = ["alloc", "global_allocator", "logger", "panic_handler"] }
+uefi_raw = "=0.17.0"
 
 [profile.release]
 panic = "abort"
