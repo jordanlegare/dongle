@@ -1,5 +1,6 @@
 use aws_lc_rs::rand::{SecureRandom, SystemRandom};
 use axum::{
+    body::Bytes,
     extract::{DefaultBodyLimit, State},
     http::StatusCode,
     response::IntoResponse,
@@ -297,6 +298,28 @@ async fn authorize(
     }
 }
 
+
+/// Firmware HTTP stacks do not consistently attach Content-Type: application/json.
+/// These two UEFI-only routes accept bounded raw JSON bodies while reusing the
+/// exact same challenge issuance and authorization handlers as the Linux agent.
+async fn issue_challenge_uefi(
+    State(state): State<AppState>,
+    body: Bytes,
+) -> Result<Json<ChallengeResponse>, ApiError> {
+    let request: ChallengeRequest = serde_json::from_slice(&body)
+        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "invalid challenge JSON"))?;
+    issue_challenge(State(state), Json(request)).await
+}
+
+async fn authorize_uefi(
+    State(state): State<AppState>,
+    body: Bytes,
+) -> Result<Json<AuthorizeResponse>, ApiError> {
+    let request: AuthorizeRequest = serde_json::from_slice(&body)
+        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "invalid authorization JSON"))?;
+    authorize(State(state), Json(request)).await
+}
+
 async fn healthz() -> impl IntoResponse {
     (StatusCode::OK, "ok")
 }
@@ -337,6 +360,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/healthz", get(healthz))
         .route("/v1/challenge", post(issue_challenge))
         .route("/v1/authorize", post(authorize))
+        .route("/v1/uefi/challenge", post(issue_challenge_uefi))
+        .route("/v1/uefi/authorize", post(authorize_uefi))
         .layer(DefaultBodyLimit::max(64 * 1024))
         .with_state(state);
 
