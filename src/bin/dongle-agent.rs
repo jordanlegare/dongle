@@ -156,6 +156,11 @@ async fn run(config: AgentConfig) -> Result<()> {
 
 #[tokio::main]
 async fn main() {
+    if let Err(error) = dongle::initialize_crypto() {
+        eprintln!("dongle-agent: {error:#}");
+        std::process::exit(1);
+    }
+
     let config_path = env::args().nth(1).unwrap_or_else(|| "/etc/dongle/agent.toml".to_string());
     let result = AgentConfig::load(&config_path).and_then(|config| {
         if !config.service_url.starts_with("https://") {
